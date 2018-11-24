@@ -39,7 +39,10 @@ class Connection:
 
     def send_image(self, image):
         self.socket.send(constants.GadgetMessageIdentifier.pack(constants.GADGET_MESSAGE_ISMRMRD_IMAGE))
-        image.serialize_into(self.socket.send)
+        self.socket.send(image.getHead())
+        self.socket.send(constants.GadgetMessageAttribLength.pack(len(image.attribute_string)))
+        self.socket.send(image.attribute_string)
+        self.socket.send(bytes(image.data))
 
     def send_acquisition(self, acquisition):
         self.socket.send(constants.GadgetMessageIdentifier.pack(constants.GADGET_MESSAGE_ISMRMRD_ACQUISITION))

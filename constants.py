@@ -44,3 +44,5 @@ SIZEOF_GADGET_MESSAGE_IDENTIFIER = len(GadgetMessageIdentifier.pack(0))
 GadgetMessageConfigurationFile = struct.Struct('<1024s')
 SIZEOF_GADGET_MESSAGE_CONFIGURATION_FILE = len(GadgetMessageConfigurationFile.pack(b''))
 
+GadgetMessageAttribLength = struct.Struct('<Q')
+SIZEOF_GADGET_MESSAGE_ATTRIB_LENGTH = len(GadgetMessageAttribLength.pack(0))
