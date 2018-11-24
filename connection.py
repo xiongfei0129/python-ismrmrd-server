@@ -76,7 +76,7 @@ class Connection:
         return config_file
 
     def read_gadget_message_config_script(self):
-        length = self.read_gadget_message_length(self)
+        length = self.read_gadget_message_length()
         return self.read(length)
 
     def read_gadget_message_parameter_script(self):
