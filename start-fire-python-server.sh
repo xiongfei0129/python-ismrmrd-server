@@ -5,8 +5,8 @@
 
 if [ $# -eq 1 ]; then
   LOG_FILE=${1}
-  /usr/local/bin/python3 /opt/code/python-ismrmrd-server/main.py -v -H=192.168.2.2 -p=9002 -l=${LOG_FILE} &
+  /usr/local/bin/python3 /opt/code/python-ismrmrd-server/main.py -v -H=0.0.0.0 -p=9002 -l=${LOG_FILE} &
 else
-  /usr/local/bin/python3 /opt/code/python-ismrmrd-server/main.py -v -H=192.168.2.2 -p=9002 &
+  /usr/local/bin/python3 /opt/code/python-ismrmrd-server/main.py -v -H=0.0.0.0 -p=9002 &
 fi
 
