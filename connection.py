@@ -18,13 +18,13 @@ class Connection:
         self.socket = socket
         self.is_exhausted = False
         self.handlers = {
-            constants.GADGET_MESSAGE_CONFIG_FILE: self.read_gadget_message_config_file,
-            constants.GADGET_MESSAGE_CONFIG_SCRIPT: self.read_gadget_message_config_script,
-            constants.GADGET_MESSAGE_PARAMETER_SCRIPT: self.read_gadget_message_parameter_script,
-            constants.GADGET_MESSAGE_CLOSE: self.read_gadget_message_close,
-            constants.GADGET_MESSAGE_ISMRMRD_ACQUISITION: self.read_gadget_message_ismrmrd_acquisition,
-            constants.GADGET_MESSAGE_ISMRMRD_WAVEFORM: self.read_gadget_message_ismrmrd_waveform,
-            constants.GADGET_MESSAGE_ISMRMRD_IMAGE: self.read_gadget_message_ismrmrd_image
+            constants.MRD_MESSAGE_CONFIG_FILE:         self.read_mrd_message_config_file,
+            constants.MRD_MESSAGE_CONFIG_SCRIPT:       self.read_mrd_message_config_script,
+            constants.MRD_MESSAGE_PARAMETER_SCRIPT:    self.read_mrd_message_parameter_script,
+            constants.MRD_MESSAGE_CLOSE:               self.read_mrd_message_close,
+            constants.MRD_MESSAGE_ISMRMRD_ACQUISITION: self.read_mrd_message_ismrmrd_acquisition,
+            constants.MRD_MESSAGE_ISMRMRD_WAVEFORM:    self.read_mrd_message_ismrmrd_waveform,
+            constants.MRD_MESSAGE_ISMRMRD_IMAGE:       self.read_mrd_message_ismrmrd_image
         }
 
     def __iter__(self):
@@ -38,25 +38,26 @@ class Connection:
         return self.socket.recv(nbytes, socket.MSG_WAITALL)
 
     def send_image(self, image):
-        self.socket.send(constants.GadgetMessageIdentifier.pack(constants.GADGET_MESSAGE_ISMRMRD_IMAGE))
+        self.socket.send(constants.MrdMessageIdentifier.pack(constants.MRD_MESSAGE_ISMRMRD_IMAGE))
         self.socket.send(image.getHead())
-        self.socket.send(constants.GadgetMessageAttribLength.pack(len(image.attribute_string)))
+        self.socket.send(constants.MrdMessageAttribLength.pack(len(image.attribute_string)))
         self.socket.send(image.attribute_string)
         self.socket.send(bytes(image.data))
 
     def send_acquisition(self, acquisition):
-        self.socket.send(constants.GadgetMessageIdentifier.pack(constants.GADGET_MESSAGE_ISMRMRD_ACQUISITION))
+        logging.info("Received MRD_MESSAGE_ISMRMRD_ACQUISITION (1008)")
+        self.socket.send(constants.MrdMessageIdentifier.pack(constants.MRD_MESSAGE_ISMRMRD_ACQUISITION))
         acquisition.serialize_into(self.socket.send)
 
     def send_waveform(self, waveform):
-        self.socket.send(constants.GadgetMessageIdentifier.pack(constants.GADGET_MESSAGE_ISMRMRD_WAVEFORM))
+        logging.info("Received MRD_MESSAGE_ISMRMRD_WAVEFORM (1026)")
+        self.socket.send(constants.MrdMessageIdentifier.pack(constants.MRD_MESSAGE_ISMRMRD_WAVEFORM))
         waveform.serialize_into(self.socket.send)
 
+
     def next(self):
-
-        id = self.read_gadget_message_identifier()
+        id = self.read_mrd_message_identifier()
         handler = self.handlers.get(id, lambda: Connection.unknown_message_identifier(id))
-
         return handler()
 
     @staticmethod
@@ -64,37 +65,42 @@ class Connection:
         logging.error("Received unknown message type: %d", identifier)
         raise StopIteration
 
-    def read_gadget_message_identifier(self):
-        identifier_bytes = self.read(constants.SIZEOF_GADGET_MESSAGE_IDENTIFIER)
-        return constants.GadgetMessageIdentifier.unpack(identifier_bytes)[0]
+    def read_mrd_message_identifier(self):
+        identifier_bytes = self.read(constants.SIZEOF_MRD_MESSAGE_IDENTIFIER)
+        return constants.MrdMessageIdentifier.unpack(identifier_bytes)[0]
 
-    def read_gadget_message_length(self):
-        length_bytes = self.read(constants.SIZEOF_GADGET_MESSAGE_LENGTH)
-        return constants.GadgetMessageLength.unpack(length_bytes)[0]
+    def read_mrd_message_length(self):
+        length_bytes = self.read(constants.SIZEOF_MRD_MESSAGE_LENGTH)
+        return constants.MrdMessageLength.unpack(length_bytes)[0]
 
-    def read_gadget_message_config_file(self):
-        config_file_bytes = self.read(constants.SIZEOF_GADGET_MESSAGE_CONFIGURATION_FILE)
-        config_file = constants.GadgetMessageConfigurationFile.unpack(config_file_bytes)[0]
+    def read_mrd_message_config_file(self):
+        logging.info("Received MRD_MESSAGE_CONFIG_FILE (1)")
+        config_file_bytes = self.read(constants.SIZEOF_MRD_MESSAGE_CONFIGURATION_FILE)
+        config_file = constants.MrdMessageConfigurationFile.unpack(config_file_bytes)[0]
 
         return config_file
 
-    def read_gadget_message_config_script(self):
-        length = self.read_gadget_message_length()
+    def read_mrd_message_config_script(self):
+        logging.info("Received MRD_MESSAGE_CONFIG_SCRIPT (2)")
+        length = self.read_mrd_message_length()
         return self.read(length)
 
-    def read_gadget_message_parameter_script(self):
-        length = self.read_gadget_message_length()
+    def read_mrd_message_parameter_script(self):
+        logging.info("Received MRD_MESSAGE_PARAMETER_SCRIPT (3)")
+        length = self.read_mrd_message_length()
         return self.read(length)
 
-    def read_gadget_message_close(self):
+    def read_mrd_message_close(self):
+        logging.info("Received MRD_MESSAGE_CLOSE (4) -- Stopping session")
         self.is_exhausted = True
         raise StopIteration
 
-    def read_gadget_message_ismrmrd_acquisition(self):
+    def read_mrd_message_ismrmrd_acquisition(self):
         return ismrmrd.Acquisition.deserialize_from(self.read)
 
-    def read_gadget_message_ismrmrd_waveform(self):
+    def read_mrd_message_ismrmrd_waveform(self):
         return ismrmrd.Waveform.deserialize_from(self.read)
 
-    def read_gadget_message_ismrmrd_image(self):
+    def read_mrd_message_ismrmrd_image(self):
+        logging.info("Received MRD_MESSAGE_ISMRMRD_IMAGE (1022)")
         return ismrmrd.Image.deserialize_from(self.read)

@@ -47,7 +47,8 @@ class Server:
 
             self.processor(connection, config, parameters)
 
-            end = constants.GadgetMessageIdentifier.pack(constants.GADGET_MESSAGE_CLOSE)
+            logging.info("Sending MRD_MESSAGE_CLOSE")
+            end = constants.MrdMessageIdentifier.pack(constants.MRD_MESSAGE_CLOSE)
             sock.send(end)
 
         except Exception as e:

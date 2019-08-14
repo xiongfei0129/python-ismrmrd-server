@@ -5,3 +5,4 @@
 .virtualenv
 *.tar
 *.zip
+data/
