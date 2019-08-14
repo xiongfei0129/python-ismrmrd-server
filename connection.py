@@ -54,6 +54,9 @@ class Connection:
         self.socket.send(constants.MrdMessageIdentifier.pack(constants.MRD_MESSAGE_ISMRMRD_WAVEFORM))
         waveform.serialize_into(self.socket.send)
 
+    def send_close(self):
+        logging.info("Sending MRD_MESSAGE_CLOSE (4)")
+        self.socket.send(constants.MrdMessageIdentifier.pack(constants.MRD_MESSAGE_CLOSE))
 
     def next(self):
         id = self.read_mrd_message_identifier()

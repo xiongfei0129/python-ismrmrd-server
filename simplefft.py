@@ -17,12 +17,28 @@ def groups(iterable, predicate):
             group = []
 
 
+def conditionalGroups(iterable, predicateAccept, predicateFinish):
+    group = []
+    try:
+        for item in iterable:
+            if predicateAccept(item):
+                group.append(item)
+
+            if predicateFinish(item):
+                yield group
+                group = []
+    finally:
+        logging.info("Received StopIteration")
+        iterable.send_close()
+
+
 def process(connection, config, params):
     logging.info("Processing connection.")
     logging.info("Config: \n%s", config.decode("utf-8"))
     logging.info("Params: \n%s", params.decode("utf-8"))
 
-    for group in groups(connection, lambda acq: acq.is_flag_set(ismrmrd.ACQ_LAST_IN_SLICE)):
+    # Discard phase correction lines and accumulate lines until "ACQ_LAST_IN_SLICE" is set
+    for group in conditionalGroups(connection, lambda acq: not acq.is_flag_set(ismrmrd.ACQ_IS_PHASECORR_DATA), lambda acq: acq.is_flag_set(ismrmrd.ACQ_LAST_IN_SLICE)):
         image = process_group(group, config, params)
 
         logging.info("Sending image to client:\n%s", image)
@@ -69,19 +85,19 @@ def process_group(group, config, params):
     nRO = np.size(data,0);
     data = data[int(nRO/4):int(nRO*3/4),:]
     logging.info("Image without oversampling is size %s" % (data.shape,))
-    np.save(debugFolder + "/" + "img_crop.npy", data)
+    np.save(debugFolder + "/" + "imgCrop.npy", data)
 
     # Format as ISMRMRD image data
     image = ismrmrd.Image.from_array(data, acquisition=group[0])
     image.image_index = 1
 
     # Set ISMRMRD Meta Attributes
-    meta = ismrmrd.Meta({'GADGETRON_DataRole': 'Image',
-                         'GADGETRON_ImageProcessingHistory': ['FIRE', 'PYTHON'],
-                         'GADGETRON_WindowCenter': '16384',
-                         'GADGETRON_WindowWidth': '32768'})
+    meta = ismrmrd.Meta({'DataRole':               'Image',
+                         'ImageProcessingHistory': ['FIRE', 'PYTHON'],
+                         'WindowCenter':           '16384',
+                         'WindowWidth':            '32768'})
     xml = meta.serialize()
-    logging.info("XML: %s", xml)
+    logging.info("Image MetaAttributes: %s", xml)
     logging.info("Image data has %d elements", image.data.size)
 
     image.attribute_string = xml

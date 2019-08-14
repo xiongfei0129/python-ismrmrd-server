@@ -47,14 +47,11 @@ class Server:
 
             self.processor(connection, config, parameters)
 
-            logging.info("Sending MRD_MESSAGE_CLOSE")
-            end = constants.MrdMessageIdentifier.pack(constants.MRD_MESSAGE_CLOSE)
-            sock.send(end)
-
         except Exception as e:
             logging.exception(e)
 
         finally:
             sock.shutdown(socket.SHUT_RDWR)
             sock.close()
+            logging.info("Socket closed")
 
