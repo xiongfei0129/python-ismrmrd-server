@@ -21,6 +21,9 @@ def conditionalGroups(iterable, predicateAccept, predicateFinish):
     group = []
     try:
         for item in iterable:
+            if item is None:
+                break
+
             if predicateAccept(item):
                 group.append(item)
 
