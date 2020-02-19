@@ -38,19 +38,24 @@ class Connection:
         return self.socket.recv(nbytes, socket.MSG_WAITALL)
 
     def send_image(self, image):
+        logging.info("Sending MRD_MESSAGE_ISMRMRD_IMAGE (1022)")
         self.socket.send(constants.MrdMessageIdentifier.pack(constants.MRD_MESSAGE_ISMRMRD_IMAGE))
+        # image.serialize_into(self.socket.send)
+
+        # Don't use serialize_into because we send attributes as null-terminated string
         self.socket.send(image.getHead())
-        self.socket.send(constants.MrdMessageAttribLength.pack(len(image.attribute_string)))
-        self.socket.send(image.attribute_string)
+        self.socket.send(constants.MrdMessageAttribLength.pack(len(image.attribute_string)+1))
+        self.socket.send(bytes(image.attribute_string, 'utf-8'))
+        self.socket.send(bytes('\0',                   'utf-8'))
         self.socket.send(bytes(image.data))
 
     def send_acquisition(self, acquisition):
-        logging.info("Received MRD_MESSAGE_ISMRMRD_ACQUISITION (1008)")
+        logging.info("Sending MRD_MESSAGE_ISMRMRD_ACQUISITION (1008)")
         self.socket.send(constants.MrdMessageIdentifier.pack(constants.MRD_MESSAGE_ISMRMRD_ACQUISITION))
         acquisition.serialize_into(self.socket.send)
 
     def send_waveform(self, waveform):
-        logging.info("Received MRD_MESSAGE_ISMRMRD_WAVEFORM (1026)")
+        logging.info("Sending MRD_MESSAGE_ISMRMRD_WAVEFORM (1026)")
         self.socket.send(constants.MrdMessageIdentifier.pack(constants.MRD_MESSAGE_ISMRMRD_WAVEFORM))
         waveform.serialize_into(self.socket.send)
 
@@ -80,7 +85,6 @@ class Connection:
         logging.info("Received MRD_MESSAGE_CONFIG_FILE (1)")
         config_file_bytes = self.read(constants.SIZEOF_MRD_MESSAGE_CONFIGURATION_FILE)
         config_file = constants.MrdMessageConfigurationFile.unpack(config_file_bytes)[0]
-
         return config_file
 
     def read_mrd_message_config_script(self):
@@ -94,16 +98,45 @@ class Connection:
         return self.read(length)
 
     def read_mrd_message_close(self):
-        logging.info("Received MRD_MESSAGE_CLOSE (4) -- Stopping session")
+        logging.info("Received MRD_MESSAGE_CLOSE (4)")
         self.is_exhausted = True
-        raise StopIteration
+        return
 
     def read_mrd_message_ismrmrd_acquisition(self):
+        logging.info("Received MRD_MESSAGE_ISMRMRD_ACQUISITION (1008)")
         return ismrmrd.Acquisition.deserialize_from(self.read)
 
     def read_mrd_message_ismrmrd_waveform(self):
+        logging.info("Received MRD_MESSAGE_ISMRMRD_WAVEFORM (1026)")
         return ismrmrd.Waveform.deserialize_from(self.read)
 
     def read_mrd_message_ismrmrd_image(self):
         logging.info("Received MRD_MESSAGE_ISMRMRD_IMAGE (1022)")
-        return ismrmrd.Image.deserialize_from(self.read)
+        # return ismrmrd.Image.deserialize_from(self.read)
+
+        # Explicit version of deserialize_from() for more verbose debugging
+        logging.info("Reading in %d bytes of image header", ctypes.sizeof(ismrmrd.ImageHeader))
+        header_bytes = self.read(ctypes.sizeof(ismrmrd.ImageHeader))
+
+        attribute_length_bytes = self.read(ctypes.sizeof(ctypes.c_uint64))
+        attribute_length = ctypes.c_uint64.from_buffer_copy(attribute_length_bytes)
+        logging.info("Reading in %d bytes of attributes", attribute_length.value)
+
+        attribute_bytes = self.read(attribute_length.value)
+        logging.info("Attributes: %s", attribute_bytes)
+
+        image = ismrmrd.Image(header_bytes, attribute_bytes.decode('utf-8'))
+
+        def calculate_number_of_entries(nchannels, xs, ys, zs):
+            return nchannels * xs * ys * zs
+
+        nentries = calculate_number_of_entries(image.channels, *image.matrix_size)
+        nbytes = nentries * ismrmrd.get_dtype_from_data_type(image.data_type).itemsize
+
+        logging.info("Reading in %d bytes of image data", nbytes)
+        data_bytes = self.read(nbytes)
+
+        image.data.ravel()[:] = np.frombuffer(data_bytes, dtype=ismrmrd.get_dtype_from_data_type(image.data_type))
+
+        return image
+
