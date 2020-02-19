@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import simplefft
+import invertimage
 from server import Server
 
 import argparse
@@ -14,7 +15,11 @@ defaults = {
 
 def main(args):
 
+    # Accept incoming raw data perform FFT reconstruction
     server = Server(args.host, args.port, simplefft.process)
+
+    # Accept incoming raw data or images and invert contrast
+    # server = Server(args.host, args.port, invertimage.process)
     server.serve()
 
 
