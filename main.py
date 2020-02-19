@@ -6,6 +6,7 @@ from server import Server
 
 import argparse
 import logging
+import sys
 
 defaults = {
     'host': '0.0.0.0',
@@ -40,6 +41,7 @@ if __name__ == '__main__':
     if args.logfile:
         print("Logging to file: ", args.logfile)
         logging.basicConfig(filename=args.logfile, format='%(asctime)s - %(message)s', level=logging.WARNING)
+        logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
     else:
         print("No logfile provided")
         logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.WARNING)
