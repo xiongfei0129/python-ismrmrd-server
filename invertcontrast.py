@@ -6,22 +6,27 @@ import logging
 import numpy as np
 import numpy.fft as fft
 
+# Folder for debug output files
+debugFolder = "/tmp/share/debug"
 
-def groups(iterable, predicate):
-    group = []
-    for item in iterable:
-        group.append(item)
+def process(connection, config, metadata):
+    logging.info("Config: \n%s", config)
+    logging.info("Metadata: \n%s", metadata)
 
-        if predicate(item):
-            yield group
-            group = []
+    for group in process_data(connection):
+        if isinstance(group[0], ismrmrd.Image):
+            logging.info("Processing an image")
+            image = process_image(group[0], config, metadata)
+        else:
+            logging.info("Processing a group of k-space data")
+            image = process_raw(group, config, metadata)
+
+        logging.debug("Sending image to client:\n%s", image)
+        connection.send_image(image)
 
 
 # Continuously parse incoming data parsed from MRD messages
-#  - For raw k-space data, collect data that meets criteria "predicateAccept"
-#    and pass along when "predicateFinish" is satisfied.
-#  - For image data, pass along immediately.
-def process_data(iterable, predicateAccept, predicateFinish):
+def process_data(iterable):
     group = []
     try:
         for item in iterable:
@@ -29,11 +34,10 @@ def process_data(iterable, predicateAccept, predicateFinish):
                 break
 
             elif isinstance(item, ismrmrd.Acquisition):
-                logging.info("Lin: %s", item.idx.kspace_encode_step_1)
-                if predicateAccept(item):
+                if (not item.is_flag_set(ismrmrd.ACQ_IS_PHASECORR_DATA)):
                     group.append(item)
 
-                if predicateFinish(item):
+                if (item.is_flag_set(ismrmrd.ACQ_LAST_IN_SLICE)):
                     yield group
                     group = []
 
@@ -41,53 +45,33 @@ def process_data(iterable, predicateAccept, predicateFinish):
                 group.append(item)
                 yield group
                 group = []
+
             else:
-                logging.info("Unsupported data type %s", type(item).__name__)
+                logging.error("Unsupported data type %s", type(item).__name__)
 
     finally:
         iterable.send_close()
 
 
-def process(connection, config, params):
-    logging.info("Processing connection.")
-    logging.info("Config: \n%s", config.decode("utf-8"))
-    logging.info("Params: \n%s", params.decode("utf-8"))
-
-    # Discard phase correction lines and accumulate lines until "ACQ_LAST_IN_SLICE" is set
-    for group in process_data(connection, lambda acq: not acq.is_flag_set(ismrmrd.ACQ_IS_PHASECORR_DATA), lambda acq: acq.is_flag_set(ismrmrd.ACQ_LAST_IN_SLICE)):
-        if isinstance(group[0], ismrmrd.Image):
-            logging.info("Processing an image")
-            image = process_image(group[0], config, params)
-        else:
-            logging.info("Processing a group of k-space data")
-            image = process_raw(group, config, params)
-
-        logging.info("Sending image to client:\n%s", image)
-        connection.send_image(image)
-
-
-def process_raw(group, config, params):
-    # Folder for debug output files
-    debugFolder = "/tmp/share/dependency"
-
+def process_raw(group, config, metadata):
     # Create folder, if necessary
     if not os.path.exists(debugFolder):
         os.makedirs(debugFolder)
-        logging.info("Created folder " + debugFolder + " for debug output files")
+        logging.debug("Created folder " + debugFolder + " for debug output files")
 
     # Sort by line number (incoming data may be interleaved)
     lin = [acquisition.idx.kspace_encode_step_1 for acquisition in group]
-    logging.info("Incoming lin ordering: " + str(lin))
+    logging.debug("Incoming lin ordering: " + str(lin))
 
     group.sort(key = lambda acq: acq.idx.kspace_encode_step_1)
     sortedLin = [acquisition.idx.kspace_encode_step_1 for acquisition in group]
-    logging.info("Sorted lin ordering: " + str(sortedLin))
+    logging.debug("Sorted lin ordering: " + str(sortedLin))
 
     # Format data into single [cha RO PE] array
     data = [acquisition.data for acquisition in group]
     data = np.stack(data, axis=-1)
 
-    logging.info("Raw data is size %s" % (data.shape,))
+    logging.debug("Raw data is size %s" % (data.shape,))
     np.save(debugFolder + "/" + "raw.npy", data)
 
     # Fourier Transform
@@ -101,24 +85,24 @@ def process_raw(group, config, params):
     data = np.sum(data, axis=0)
     data = np.sqrt(data)
 
-    logging.info("Image data is size %s" % (data.shape,))
+    logging.debug("Image data is size %s" % (data.shape,))
     np.save(debugFolder + "/" + "img.npy", data)
 
     # Normalize and convert to int16
-    data *= 32768/data.max()
+    data *= 32767/data.max()
     data = np.around(data)
     data = data.astype(np.int16)
 
     # Invert image contrast
-    data = 32768-data
+    data = 32767-data
     data = np.abs(data)
     data = data.astype(np.int16)
     np.save(debugFolder + "/" + "imgInverted.npy", data)
 
     # Remove phase oversampling
-    nRO = np.size(data,0);
+    nRO = np.size(data,0)
     data = data[int(nRO/4):int(nRO*3/4),:]
-    logging.info("Image without oversampling is size %s" % (data.shape,))
+    logging.debug("Image without oversampling is size %s" % (data.shape,))
     np.save(debugFolder + "/" + "imgCrop.npy", data)
 
     # Format as ISMRMRD image data
@@ -131,48 +115,47 @@ def process_raw(group, config, params):
                          'WindowCenter':           '16384',
                          'WindowWidth':            '32768'})
     xml = meta.serialize()
-    logging.info("Image MetaAttributes: %s", xml)
-    logging.info("Image data has %d elements", image.data.size)
+    logging.debug("Image MetaAttributes: %s", xml)
+    logging.debug("Image data has %d elements", image.data.size)
 
     image.attribute_string = xml
     return image
 
 
-def process_image(image, config, params):
-    # Folder for debug output files
-    debugFolder = "/tmp/share/dependency"
-
+def process_image(image, config, metadata):
     # Create folder, if necessary
     if not os.path.exists(debugFolder):
         os.makedirs(debugFolder)
-        logging.info("Created folder " + debugFolder + " for debug output files")
+        logging.debug("Created folder " + debugFolder + " for debug output files")
 
-    logging.info("Incoming image data of type %s", ismrmrd.get_dtype_from_data_type(image.data_type))
+    logging.debug("Incoming image data of type %s", ismrmrd.get_dtype_from_data_type(image.data_type))
 
     # Extract image data itself
     data = image.data
-    logging.info("Original image data is size %s" % (data.shape,))
+    logging.debug("Original image data is size %s" % (data.shape,))
     np.save(debugFolder + "/" + "imgOrig.npy", data)
 
     # Normalize and convert to int16
     data = data.astype(np.float64)
-    data *= 32768/data.max()
+    data *= 32767/data.max()
     data = np.around(data)
     data = data.astype(np.int16)
 
     # Invert image contrast
-    data = 32768-data
+    data = 32767-data
     data = np.abs(data)
     data = data.astype(np.int16)
     np.save(debugFolder + "/" + "imgInverted.npy", data)
 
     # Create new MRD instance for the inverted image
-    imageInverted = ismrmrd.Image.from_array(data)
-    data_type = imageInverted.data_type;
+    imageInverted = ismrmrd.Image.from_array(data.transpose())
+    data_type = imageInverted.data_type
+
+    np.save(debugFolder + "/" + "imgInvertedMrd.npy", imageInverted.data)
 
     # Copy the fixed header information
-    oldHeader = image.getHead();
-    oldHeader.data_type = data_type;
+    oldHeader = image.getHead()
+    oldHeader.data_type = data_type
     imageInverted.setHead(oldHeader)
 
     # Set ISMRMRD Meta Attributes
@@ -181,8 +164,8 @@ def process_image(image, config, params):
                          'WindowCenter':           '16384',
                          'WindowWidth':            '32768'})
     xml = meta.serialize()
-    logging.info("Image MetaAttributes: %s", xml)
-    logging.info("Image data has %d elements", image.data.size)
+    logging.debug("Image MetaAttributes: %s", xml)
+    logging.debug("Image data has %d elements", image.data.size)
 
     imageInverted.attribute_string = xml
 

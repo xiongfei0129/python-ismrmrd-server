@@ -5,7 +5,10 @@ import itertools
 import logging
 import numpy as np
 import numpy.fft as fft
+from datetime import datetime
 
+# Folder for debug output files
+debugFolder = "/tmp/share/debug"
 
 def groups(iterable, predicate):
     group = []
@@ -31,38 +34,32 @@ def conditionalGroups(iterable, predicateAccept, predicateFinish):
                 yield group
                 group = []
     finally:
-        logging.info("Received StopIteration")
         iterable.send_close()
 
 
-def process(connection, config, params):
-    logging.info("Processing connection.")
-    logging.info("Config: \n%s", config.decode("utf-8"))
-    logging.info("Params: \n%s", params.decode("utf-8"))
+def process(connection, config, metadata):
+    logging.info("Config: \n%s", config)
+    logging.info("Metadata: \n%s", metadata)
 
     # Discard phase correction lines and accumulate lines until "ACQ_LAST_IN_SLICE" is set
     for group in conditionalGroups(connection, lambda acq: not acq.is_flag_set(ismrmrd.ACQ_IS_PHASECORR_DATA), lambda acq: acq.is_flag_set(ismrmrd.ACQ_LAST_IN_SLICE)):
-        image = process_group(group, config, params)
+        image = process_group(group, config, metadata)
 
-        logging.info("Sending image to client:\n%s", image)
+        logging.debug("Sending image to client:\n%s", image)
         connection.send_image(image)
 
 
-def process_group(group, config, params):
-
-    # Folder for debug output files
-    debugFolder = "/tmp/share/dependency"
-
+def process_group(group, config, metadata):
     # Create folder, if necessary
     if not os.path.exists(debugFolder):
         os.makedirs(debugFolder)
-        logging.info("Created folder " + debugFolder + " for debug output files")
+        logging.debug("Created folder " + debugFolder + " for debug output files")
 
     # Format data into single [cha RO PE] array
     data = [acquisition.data for acquisition in group]
     data = np.stack(data, axis=-1)
 
-    logging.info("Raw data is size %s" % (data.shape,))
+    logging.debug("Raw data is size %s" % (data.shape,))
     np.save(debugFolder + "/" + "raw.npy", data)
 
     # Fourier Transform
@@ -76,18 +73,18 @@ def process_group(group, config, params):
     data = np.sum(data, axis=0)
     data = np.sqrt(data)
 
-    logging.info("Image data is size %s" % (data.shape,))
+    logging.debug("Image data is size %s" % (data.shape,))
     np.save(debugFolder + "/" + "img.npy", data)
 
     # Normalize and convert to int16
-    data *= 32768/data.max()
+    data *= 32767/data.max()
     data = np.around(data)
     data = data.astype(np.int16)
 
     # Remove phase oversampling
-    nRO = np.size(data,0);
+    nRO = np.size(data,0)
     data = data[int(nRO/4):int(nRO*3/4),:]
-    logging.info("Image without oversampling is size %s" % (data.shape,))
+    logging.debug("Image without oversampling is size %s" % (data.shape,))
     np.save(debugFolder + "/" + "imgCrop.npy", data)
 
     # Format as ISMRMRD image data
@@ -100,8 +97,8 @@ def process_group(group, config, params):
                          'WindowCenter':           '16384',
                          'WindowWidth':            '32768'})
     xml = meta.serialize()
-    logging.info("Image MetaAttributes: %s", xml)
-    logging.info("Image data has %d elements", image.data.size)
+    logging.debug("Image MetaAttributes: %s", xml)
+    logging.debug("Image data has %d elements", image.data.size)
 
     image.attribute_string = xml
     return image
