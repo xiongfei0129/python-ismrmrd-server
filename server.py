@@ -64,6 +64,14 @@ class Server:
             elif (config == "invertcontrast"):
                 logging.info("Starting invertcontrast processing based on config")
                 invertcontrast.process(connection, config, metadata)
+            elif (config == "null"):
+                logging.info("No processing based on config")
+                try:
+                    for msg in connection:
+                        if msg is None:
+                            break
+                finally:
+                    connection.send_close()
             else:
                 logging.info("Unknown config '%s'.  Falling back to 'invertcontrast'", config)
                 invertcontrast.process(connection, config, metadata)
