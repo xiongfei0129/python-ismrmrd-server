@@ -72,6 +72,21 @@ class Server:
                             break
                 finally:
                     connection.send_close()
+            elif (config == "savedataonly"):
+                logging.info("Save data, but no processing based on config")
+                if connection.savedata is True:
+                    logging.debug("Saving data is already enabled")
+                else:
+                    connection.savedata = True
+                    connection.create_save_file()
+
+                # Dummy loop with no processing
+                try:
+                    for msg in connection:
+                        if msg is None:
+                            break
+                finally:
+                    connection.send_close()
             else:
                 logging.info("Unknown config '%s'.  Falling back to 'invertcontrast'", config)
                 invertcontrast.process(connection, config, metadata)

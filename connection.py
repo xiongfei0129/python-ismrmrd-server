@@ -17,6 +17,7 @@ class Connection:
         self.savedata       = savedata
         self.savedataFile   = savedataFile
         self.savedataFolder = savedataFolder
+        self.savedataGroup  = savedataGroup
         self.socket         = socket
         self.is_exhausted   = False
         self.handlers       = {
@@ -29,23 +30,24 @@ class Connection:
             constants.MRD_MESSAGE_ISMRMRD_WAVEFORM:    self.read_waveform,
             constants.MRD_MESSAGE_ISMRMRD_IMAGE:       self.read_image
         }
+        self.create_save_file()
 
+    def create_save_file(self):
         if (self.savedata is True):
             # Create savedata folder, if necessary
-            if ((savedataFolder) and (not os.path.exists(savedataFolder))):
-                os.makedirs(savedataFolder)
-                logging.debug("Created folder " + savedataFolder + " to save incoming data")
+            if ((self.savedataFolder) and (not os.path.exists(self.savedataFolder))):
+                os.makedirs(self.savedataFolder)
+                logging.debug("Created folder " + self.savedataFolder + " to save incoming data")
 
             if (self.savedataFile):
                 mrdFilePath = self.savedataFile
             else:
-                mrdFilePath = os.path.join(savedataFolder, "MRD_input_" + datetime.now().strftime("%Y-%m-%d-%H%M%S" + "_" + str(random.randint(0,100)) + ".h5"))
+                mrdFilePath = os.path.join(self.savedataFolder, "MRD_input_" + datetime.now().strftime("%Y-%m-%d-%H%M%S" + "_" + str(random.randint(0,100)) + ".h5"))
 
             # Create HDF5 file to store incoming MRD data
-            logging.info("Incoming data will be saved to: '%s' in group '%s'", mrdFilePath, savedataGroup)
-            self.dset = ismrmrd.Dataset(mrdFilePath, savedataGroup)
-            self.dset._file.require_group(savedataGroup)
-
+            logging.info("Incoming data will be saved to: '%s' in group '%s'", mrdFilePath, self.savedataGroup)
+            self.dset = ismrmrd.Dataset(mrdFilePath, self.savedataGroup)
+            self.dset._file.require_group(self.savedataGroup)
 
     def __iter__(self):
         while not self.is_exhausted:
