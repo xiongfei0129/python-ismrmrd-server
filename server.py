@@ -14,37 +14,47 @@ class Server:
     Something something docstring.
     """
 
-    def __init__(self, address, port):
+    def __init__(self, address, port, savedata, savedataFolder):
+        logging.info("Starting server and listening for data at %s:%d", address, port)
+        if (savedata is True):
+            logging.debug("Saving incoming data is enabled.")
 
-        logging.info("Initializing server. [%s %d]", address, port)
-
+        self.savedata = savedata
+        self.savedataFolder = savedataFolder
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.bind((address, port))
 
     def serve(self):
-        logging.info("Serving... ")
+        logging.debug("Serving... ")
         self.socket.listen(0)
 
         while True:
             sock, (remote_addr, remote_port) = self.socket.accept()
 
-            logging.info("Accepting connection from: %s (%d)", remote_addr, remote_port)
+            logging.info("Accepting connection from: %s:%d", remote_addr, remote_port)
 
             process = multiprocessing.Process(target=self.handle, args=[sock])
             process.daemon = True
             process.start()
 
-            logging.info("Spawned process %d to handle connection.", process.pid)
+            logging.debug("Spawned process %d to handle connection.", process.pid)
 
     def handle(self, sock):
 
         try:
-            connection = Connection(sock)
+            connection = Connection(sock, self.savedata, "", self.savedataFolder, "dataset")
 
-            # First two messages are config and parameter scripts. Read these.
+            # First message is the config (file or text)
             config = next(connection)
-            parameters = next(connection)
+
+            # Break out if a connection was established but no data was received
+            if ((config is None) & (connection.is_exhausted is True)):
+                logging.info("Connection closed without any data received")
+                return
+
+            # Second messages is the metadata (text)
+            metadata = next(connection)
 
             # Decide what program to use based on config
             # As a shortcut, we accept the file name as text too.
@@ -62,7 +72,12 @@ class Server:
             logging.exception(e)
 
         finally:
-            sock.shutdown(socket.SHUT_RDWR)
+            # Encapsulate shutdown in a try block because the socket may have
+            # already been closed on the other side
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except:
+                pass
             sock.close()
             logging.info("Socket closed")
 

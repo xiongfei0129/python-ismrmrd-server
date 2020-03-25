@@ -7,26 +7,27 @@ import logging
 import sys
 
 defaults = {
-    'host': '0.0.0.0',
-    'port': 9002
+    'host':           '0.0.0.0',
+    'port':           9002,
+    'savedataFolder': '/tmp/share/saved_data'
 }
-
 
 def main(args):
     # Start a multi-threaded dispatcher to handle incoming connections
-    server = Server(args.host, args.port)
+    server = Server(args.host, args.port, args.savedata, args.savedataFolder)
     server.serve()
-
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(description='I should be able to write this.',
+    parser = argparse.ArgumentParser(description='Example server for MRD streaming format',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    parser.add_argument('-p', '--port', type=int, help='Port')
-    parser.add_argument('-H', '--host', type=str, help='Host')
-    parser.add_argument('-v', '--verbose', action='store_true', help='Verbose output.')
-    parser.add_argument('-l', '--logfile', type=str, help='Path to log file')
+    parser.add_argument('-p', '--port',           type=int,            help='Port')
+    parser.add_argument('-H', '--host',           type=str,            help='Host')
+    parser.add_argument('-v', '--verbose',        action='store_true', help='Verbose output.')
+    parser.add_argument('-l', '--logfile',        type=str,            help='Path to log file')
+    parser.add_argument('-s', '--savedata',       action='store_true', help='Save incoming data')
+    parser.add_argument('-S', '--savedataFolder', action='store_true', help='Folder to save incoming data')
 
     parser.set_defaults(**defaults)
 
@@ -42,5 +43,7 @@ if __name__ == '__main__':
 
     if args.verbose:
         logging.root.setLevel(logging.DEBUG)
+    else:
+        logging.root.setLevel(logging.INFO)
 
     main(args)
