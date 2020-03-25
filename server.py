@@ -6,17 +6,18 @@ import socket
 import logging
 import multiprocessing
 
+import simplefft
+import invertcontrast
 
 class Server:
     """
     Something something docstring.
     """
 
-    def __init__(self, address, port, processor):
+    def __init__(self, address, port):
 
         logging.info("Initializing server. [%s %d]", address, port)
 
-        self.processor = processor
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.bind((address, port))
@@ -45,7 +46,17 @@ class Server:
             config = next(connection)
             parameters = next(connection)
 
-            self.processor(connection, config, parameters)
+            # Decide what program to use based on config
+            # As a shortcut, we accept the file name as text too.
+            if (config == "simplefft"):
+                logging.info("Starting simplefft processing based on config")
+                simplefft.process(connection, config, metadata)
+            elif (config == "invertcontrast"):
+                logging.info("Starting invertcontrast processing based on config")
+                invertcontrast.process(connection, config, metadata)
+            else:
+                logging.info("Unknown config '%s'.  Falling back to 'invertcontrast'", config)
+                invertcontrast.process(connection, config, metadata)
 
         except Exception as e:
             logging.exception(e)
