@@ -15,6 +15,8 @@ from connection import Connection
 import time
 import os
 
+# dummy
+
 defaults = {
     'address':   'localhost',
     'port':      9002, 
